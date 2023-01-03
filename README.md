@@ -3,9 +3,7 @@ Sander Kristo Oscar Reading Tool
 
 # Master of Applied AI Logbook
 
-[TOC]
-
-# Log
+# Logbook
 > | Week       | Student(en)        | Samenvatting van werk                        | Volgende week                              |
 > |------------|--------------------|----------------------------------------------|--------------------------------------------|
 > |     1      | Kristo, Oscar en Sander | Brainstormsessie over ideeën, ontwerpworkshop en onderzoek naar relevante informatie. | Onderzoek Domeinkennis (Kristo), Bestaande oplossingen (Oscar), Behoeftes doelgroep (Sander). Scenario/Storyboard uitwerken. Flow diagram maken. Basiskennis opdoen NLP technieken.|
