@@ -1,0 +1,788 @@
+#IMPORTS Application
+import tkinter
+from tkinter import *
+from tkinter import ttk
+import PIL
+from PIL import Image,ImageTk
+import cv2
+import os
+import os.path
+import time
+import sys
+import numpy as np
+import webbrowser
+from tkPDFViewer import tkPDFViewer as pdf
+from tkinter import filedialog as fd
+from tkinter.messagebox import showinfo
+import time
+from idlelib.tooltip import Hovertip
+
+#IMPORTS Scraper
+import io
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfpage import PDFPage
+from pdfminer.converter import TextConverter
+from pdfminer.layout import LAParams
+
+from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2.generic import AnnotationBuilder
+import PyPDF2 as pdf2
+
+from scihub import SciHub
+import string
+from string import digits
+import fitz
+
+from keybert import KeyBERT
+from pydictionary import Dictionary
+import readtime
+
+# globals
+sh = SciHub()
+frameCnt = 12
+total_frameCnt = 0
+input = ""
+filename = ""
+keywords_list= []
+timestart = 0
+readingspeed = 265
+option = 0
+
+kw_model = KeyBERT(model='all-mpnet-base-v2')
+
+
+root = Tk()
+root.title("SKORT Tool V1.0")
+root.attributes("-fullscreen", False)
+root.bind("<Escape>", lambda event: root.attributes("-fullscreen", False))
+root.geometry("1920x1080")
+
+StartScreen = Frame(root)
+PaperScreen = Frame(root)
+LoadingScreen = Frame(root)
+PaperScreenHighlight = Frame(root)
+ReadingTimeScreen = Frame(root)
+FeedbackScreen = Frame(root)
+for frame in (PaperScreen, StartScreen, LoadingScreen, PaperScreenHighlight, ReadingTimeScreen, FeedbackScreen):
+    frame.grid(row=0, column=0, sticky="news")
+    #frame.pack()
+
+logo = PhotoImage(file = r'D:\Sander\MAAI\NLP\SKORTLogo2.png', master=root)
+bg = PhotoImage(file = r'D:\Sander\MAAI\NLP\Background.png', master=root)
+rtbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingTimeBox.png', master=root)
+hbbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\HomeButtonBox.png', master=root)
+readingbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingText.png', master=root)
+starbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\StarBox.png', master=root)
+readingexplanation = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingExplanation.png', master=root)
+removereadingtime = PhotoImage(file = r'D:\Sander\MAAI\NLP\RemoveReadingTime.png', master=root)
+removepapernotfound = PhotoImage(file = r'D:\Sander\MAAI\NLP\RemovePaperNotFound.png', master=root)
+
+canvas = Canvas(StartScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas.pack(fill="both", expand=True)
+canvas.create_image(0, 0, image=bg,
+                     anchor="nw")
+canvas.create_image(450, 100, image=logo,
+                     anchor="nw")
+
+canvas2 = Canvas(LoadingScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas2.pack(fill="both", expand=True)
+canvas2.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas3 = Canvas(PaperScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas3.pack(fill="both", expand=True)
+canvas3.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas4 = Canvas(PaperScreenHighlight, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas4.pack(fill="both", expand=True)
+canvas4.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas5 = Canvas(ReadingTimeScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas5.pack(fill="both", expand=True)
+canvas5.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas6 = Canvas(FeedbackScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas6.pack(fill="both", expand=True)
+canvas6.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas3.create_image(850, 20, image=hbbox, anchor="nw")
+canvas4.create_image(850, 20, image=hbbox, anchor="nw")
+canvas5.create_image(850, 20, image=hbbox, anchor="nw")
+canvas6.create_image(850, 20, image=hbbox, anchor="nw")
+canvas6.create_image(100, 670, image=starbox, anchor="nw")
+canvas5.create_image(850, 150, image=readingexplanation, anchor="nw")
+
+name_var = StringVar()
+name_entry = Entry(StartScreen,textvariable = name_var, font=('calibre',28,'normal'), bg = 'white', bd = 2)
+canvas.create_window(250, 500, anchor='nw', window=name_entry)
+
+click_btn = PhotoImage(file=r'D:\Sander\MAAI\NLP\UploadButton.png')
+button = Button(StartScreen, image=click_btn, command=lambda:select_file(), borderwidth=0, bg='white')
+button_canvas = canvas.create_window(900, 486, anchor="nw",
+                                       window=button)
+
+click_btn2 = PhotoImage(file=r'D:\Sander\MAAI\NLP\UploadButton2.png')
+button2 = Button(StartScreen, image=click_btn2, command=lambda:take_input(), borderwidth=0, bg='white')
+button_canvas2 = canvas.create_window(520, 550, anchor="nw",
+                                       window=button2)
+
+click_btn3 = PhotoImage(file = r'D:\Sander\MAAI\NLP\HighlightOff.png', master=root)
+button3 = Button(PaperScreen, image=click_btn3, command=lambda:highlight_on(), borderwidth=0, bg='white')
+button_canvas3 = canvas3.create_window(1080, 150, anchor="nw",
+                                       window=button3)
+click_btn4 = PhotoImage(file = r'D:\Sander\MAAI\NLP\HighlightOn.png', master=root)
+button4 = Button(PaperScreenHighlight, image=click_btn4, command=lambda:highlight_off(), borderwidth=0, bg='white')
+canvas4.create_window(1080, 150, anchor="nw", window=button4)
+
+click_btn5 = PhotoImage(file = r'D:\Sander\MAAI\NLP\InfoButton.png', master=root)
+button5 = Button(PaperScreen, image=click_btn5, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
+button5_2 = Button(PaperScreenHighlight, image=click_btn5, command=None, borderwidth=0, bg='white')
+button6 = Button(PaperScreen, image=click_btn5, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
+button6_2 = Button(PaperScreenHighlight, image=click_btn5, command=None, borderwidth=0, bg='white')
+canvas3.create_window(900, 640, anchor="nw", window=button5)
+canvas3.create_window(900, 700, anchor="nw", window=button6)
+canvas4.create_window(900, 640, anchor="nw", window=button5_2)
+canvas4.create_window(900, 700, anchor="nw", window=button6_2)
+myTip5 = Hovertip(button5,'Show info about reading time')
+myTip5_2 = Hovertip(button5_2,'Show info about reading time')
+myTip6 = Hovertip(button6,'Show info about text difficulty')
+myTip6_2 = Hovertip(button6_2,'Show info about text difficulty')
+
+click_btn7 = PhotoImage(file = r'D:\Sander\MAAI\NLP\HomeButton.png', master=root)
+button7 = Button(PaperScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_2 = Button(PaperScreenHighlight, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_3 = Button(ReadingTimeScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_4 = Button(FeedbackScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+canvas3.create_window(1350, 30, anchor="nw", window=button7)
+canvas4.create_window(1350, 30, anchor="nw", window=button7_2)
+canvas5.create_window(1350, 30, anchor="nw", window=button7_3)
+canvas6.create_window(1350, 30, anchor="nw", window=button7_4)
+myTip7 = Hovertip(button7,'Return to the home page')
+myTip7_2 = Hovertip(button7_2,'Return to the home page')
+myTip7_3 = Hovertip(button7_3,'Return to the home page')
+myTip7_4 = Hovertip(button7_4,'Return to the home page')
+
+def_var = StringVar()
+def_entry = Entry(PaperScreen,textvariable = def_var, font=('calibre',28,'normal'), bg = 'white', bd = 2, width=21)
+def_entry_2 = Entry(PaperScreenHighlight,textvariable = def_var, font=('calibre',28,'normal'), bg = 'white', bd = 2)
+canvas3.create_window(1000, 350, anchor='nw', window=def_entry)
+canvas4.create_window(1000, 350, anchor='nw', window=def_entry_2)
+#canvas3.create_text(1310, 270, text="Search definition:", fill="black", font=('Times 28 bold'))
+#canvas4.create_text(1310, 270, text="Search definition", fill="black", font=('Times 28 bold'))
+
+click_btn10 = PhotoImage(file = r'D:\Sander\MAAI\NLP\BackButton.png', master=root)
+button10 = Button(ReadingTimeScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+button10_2 = Button(FeedbackScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+canvas5.create_window(1250, 30, anchor="nw", window=button10)
+canvas6.create_window(1250, 30, anchor="nw", window=button10_2)
+myTip10 = Hovertip(button10,'Return to the previous screen')
+myTip10_2 = Hovertip(button10_2,'Return to the previous screen')
+
+click_btn11 = PhotoImage(file = r'D:\Sander\MAAI\NLP\StartTimer.png', master=root)
+button11 = Button(ReadingTimeScreen, image=click_btn11, command=lambda:timer_start(), borderwidth=0, bg='white')
+canvas5.create_window(100, 600, anchor="nw", window=button11)
+
+click_btn12 = PhotoImage(file = r'D:\Sander\MAAI\NLP\StopTimer.png', master=root)
+button12 = Button(ReadingTimeScreen, image=click_btn12, command=lambda:timer_stop(), borderwidth=0, bg='white')
+
+click_btn13 = PhotoImage(file = r'D:\Sander\MAAI\NLP\SearchButton.png', master=root)
+button13 = Button(PaperScreen, image=click_btn13, command=lambda:search_term(), borderwidth=0, bg='white')
+button13_2 = Button(PaperScreenHighlight, image=click_btn13, command=lambda:search_term2(), borderwidth=0, bg='white')
+canvas3.create_window(1290, 400, anchor="nw", window=button13)
+canvas4.create_window(1290, 400, anchor="nw", window=button13_2)
+
+click_btn14 = PhotoImage(file = r'D:\Sander\MAAI\NLP\FeedbackIcon.png', master=root)
+button14 = Button(PaperScreen, image=click_btn14, command=lambda:open_feedback(), borderwidth=0, bg='white')
+button14_2 = Button(PaperScreenHighlight, image=click_btn14, command=lambda:open_feedback(), borderwidth=0, bg='white')
+canvas3.create_window(860, 30, anchor="nw", window=button14)
+canvas4.create_window(860, 30, anchor="nw", window=button14_2)
+myTip14 = Hovertip(button14,'Give feedback about the application')
+
+click_btn15 = PhotoImage(file = r'D:\Sander\MAAI\NLP\SendButton.png', master=root)
+button15 = Button(FeedbackScreen, image=click_btn15, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+canvas6.create_window(550, 675, anchor="nw", window=button15)
+
+click_btn16 = PhotoImage(file = r'D:\Sander\MAAI\NLP\WhiteStar.png', master=root)
+button16 = Button(FeedbackScreen, image=click_btn16, command=lambda:one_star(), borderwidth=0, bg='white')
+button16_1 = Button(FeedbackScreen, image=click_btn16, command=lambda:two_star(), borderwidth=0, bg='white')
+button16_2 = Button(FeedbackScreen, image=click_btn16, command=lambda:three_star(), borderwidth=0, bg='white')
+button16_3 = Button(FeedbackScreen, image=click_btn16, command=lambda:four_star(), borderwidth=0, bg='white')
+button16_4 = Button(FeedbackScreen, image=click_btn16, command=lambda:five_star(), borderwidth=0, bg='white')
+canvas6.create_window(130, 677, anchor="nw", window=button16)
+canvas6.create_window(190, 677, anchor="nw", window=button16_1)
+canvas6.create_window(250, 677, anchor="nw", window=button16_2)
+canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+
+click_btn17 = PhotoImage(file = r'D:\Sander\MAAI\NLP\BlackStar.png', master=root)
+button17 = Button(FeedbackScreen, image=click_btn17, command=lambda:one_star2(), borderwidth=0, bg='white')
+button17_1 = Button(FeedbackScreen, image=click_btn17, command=lambda:two_star2(), borderwidth=0, bg='white')
+button17_2 = Button(FeedbackScreen, image=click_btn17, command=lambda:three_star2(), borderwidth=0, bg='white')
+button17_3 = Button(FeedbackScreen, image=click_btn17, command=lambda:four_star2(), borderwidth=0, bg='white')
+button17_4 = Button(FeedbackScreen, image=click_btn17, command=None, borderwidth=0, bg='white')
+
+click_btn18 = PhotoImage(file = r'D:\Sander\MAAI\NLP\DescriptionsOn.png', master=root)
+button18 = Button(PaperScreen, image=click_btn18, command=None, borderwidth=0, bg='white')
+button18_2 = Button(PaperScreenHighlight, image=click_btn18, command=None, borderwidth=0, bg='white')
+canvas3.create_window(1000, 280, anchor="nw", window=button18)
+canvas4.create_window(1000, 280, anchor="nw", window=button18_2)
+
+click_btn19 = PhotoImage(file = r'D:\Sander\MAAI\NLP\SynonymsOn.png', master=root)
+button19 = Button(PaperScreen, image=click_btn19, command=None, borderwidth=0, bg='white')
+button19_2 = Button(PaperScreenHighlight, image=click_btn19, command=None, borderwidth=0, bg='white')
+
+click_btn20 = PhotoImage(file = r'D:\Sander\MAAI\NLP\AntonymsOn.png', master=root)
+button20 = Button(PaperScreen, image=click_btn20, command=None, borderwidth=0, bg='white')
+button20_2 = Button(PaperScreenHighlight, image=click_btn20, command=None, borderwidth=0, bg='white')
+
+click_btn21 = PhotoImage(file = r'D:\Sander\MAAI\NLP\DescriptionsOff.png', master=root)
+button21 = Button(PaperScreen, image=click_btn21, command=lambda:definition_on(), borderwidth=0, bg='white')
+button21_2 = Button(PaperScreenHighlight, image=click_btn21, command=lambda:definition_on(), borderwidth=0, bg='white')
+
+click_btn22 = PhotoImage(file = r'D:\Sander\MAAI\NLP\SynonymsOff.png', master=root)
+button22 = Button(PaperScreen, image=click_btn22, command=lambda:synonyms_on(), borderwidth=0, bg='white')
+button22_2 = Button(PaperScreenHighlight, image=click_btn22, command=lambda:synonyms_on(), borderwidth=0, bg='white')
+canvas3.create_window(1150, 280, anchor="nw", window=button22)
+canvas4.create_window(1150, 280, anchor="nw", window=button22_2)
+
+click_btn23 = PhotoImage(file = r'D:\Sander\MAAI\NLP\AntonymsOff.png', master=root)
+button23 = Button(PaperScreen, image=click_btn23, command=lambda:antonyms_on(), borderwidth=0, bg='white')
+button23_2 = Button(PaperScreenHighlight, image=click_btn23, command=lambda:antonyms_on(), borderwidth=0, bg='white')
+canvas3.create_window(1300, 278, anchor="nw", window=button23)
+canvas4.create_window(1300, 278, anchor="nw", window=button23_2)
+
+text1 = Text(PaperScreen, bg='white', font=('Times 18 bold'), bd=1, height=5, width=50)
+text1_2 = Text(PaperScreenHighlight, bg='white', font=('Times 18 bold'), bd=1, height=5, width=50)
+text2 = Text(FeedbackScreen, bg='white', font=('Times 18 bold'), bd=1, height=20, width=50)
+canvas6.create_window(100, 140, anchor="nw", window=text2)
+
+canvas.create_text(790, 520, text="or", fill="black", font=('Times 28 bold'))
+canvas.create_text(420, 470, text="Enter a Sci-Hub link:", fill="black", font=('Times 28 bold'))
+canvas5.create_text(310, 70, text="Personalized Reading Time", fill="black", font=('Times 28 bold'))
+canvas6.create_text(400, 70, text="Give your feedback on the SKORT Tool", fill="black", font=('Times 28 bold'))
+
+canvas5.create_line(700, 0, 700, 1000)
+canvas6.create_line(800, 0, 800, 1000)
+
+canvas3.create_image(850, 610, image=rtbox, anchor="nw")
+canvas4.create_image(850, 610, image=rtbox, anchor="nw")
+canvas5.create_image(50, 150, image=readingbox, anchor="nw")
+
+frames = [PhotoImage(file=r'D:\Sander\MAAI\NLP\Loading_icon.gif', format = 'gif -index %i' %(i)) for i in range(frameCnt)]
+
+
+# Function for searching a file for upload
+def select_file():
+    global filename
+    filetypes = (
+        ('text files', '*.pdf'),
+        ('All files', '*.*')
+    )
+
+    filename = fd.askopenfilename(
+        title='Open a file',
+        initialdir='/',
+        filetypes=filetypes)
+
+    #showinfo(
+        #title='Selected File',
+        #message=filename
+    #)
+    try:
+        inPDFfile = filename
+        outTXTfile = "testingfile2.txt"
+        pdf2text(inPDFfile, outTXTfile)
+        raise_frame(LoadingScreen)
+        update(0, filename)
+    except:
+        pass
+
+# Function for scraping the text out of a pdf file to .txt
+def pdf2text(inPDFfile, outTXTfile):
+    inFile= open(inPDFfile, 'rb')
+    resMgr = PDFResourceManager()
+    retData = io.StringIO()
+    TxtConverter = TextConverter(resMgr, retData, laparams=LAParams())
+    interpreter = PDFPageInterpreter(resMgr, TxtConverter)
+    for page in PDFPage.get_pages(inFile):
+        interpreter.process_page(page)
+
+    txt = retData.getvalue()
+    if "REFERENCES" or "NOTES" or "References" in txt:
+        txt_split = txt.split("REFERENCES")
+        txt_split = txt.split("NOTES")
+        txt = txt_split[0]
+    with open(outTXTfile, 'w', encoding="utf-8") as f:
+        f.write(txt)
+
+# Function for choosing your own pdf file
+def take_input():
+    global input
+
+    input = name_entry.get()
+    path = 'SciHubPaper.pdf'
+    if "https://sci-hub.se" in input:
+        result = sh.download(input, path=path)
+        inPDFfile = path
+        outTXTfile = "testingfile2.txt"
+        pdf2text(inPDFfile, outTXTfile)
+        # os.system(path)
+        raise_frame(LoadingScreen)
+        update(0, path)
+    else:
+        canvas.create_text(790, 700, text="Incorrect input, please try again.", fill="black", font=('Times 28 bold'))
+
+# Function for updating the gif loader
+def update(ind, filename_paper):
+    global total_frameCnt
+    global keywords_list
+    frame = frames[ind]
+    total_frameCnt += 1
+    ind += 1
+    if ind == frameCnt:
+        ind = 0
+    if total_frameCnt == 60:
+        with open('testingfile2.txt', 'r', encoding="utf8") as file:
+            full_text = file.read().replace('\n', ' ')
+        remove_digits = str.maketrans('', '', digits)
+        full_text_filtered = full_text.translate(remove_digits)
+
+        keywords = kw_model.extract_keywords(full_text_filtered,
+
+                                             keyphrase_ngram_range=(1, 1),
+
+                                             stop_words='english',
+
+                                             highlight=True,
+
+                                             top_n=10)
+
+        keywords_list = list(dict(keywords).keys())
+        load_in_paper(filename_paper)
+    canvas2.create_image(500, 200, image=frame,
+                         anchor="nw")
+    root.after(100, update, ind, filename_paper)
+
+# Function for loading in the paper in the PaperScreen
+def load_in_paper(x):
+    global readingspeed
+
+    # creating object of ShowPdf from tkPDFViewer.
+    v1 = pdf.ShowPdf()
+    # Adding pdf location and width and height.
+    v2 = v1.pdf_view(PaperScreen, pdf_location = "{}".format(x), width= 95, height=50)
+    # Placing Pdf in my gui.
+    v2.pack()
+    pdf_canvas = canvas3.create_window(20, 10, anchor="nw",
+        window=v2)
+
+    file = open("testingfile2.txt", "rt", encoding='utf-8')
+    data = file.read()
+    words = data.split()
+    seconds = len(words)/readingspeed * 60
+
+    if (seconds > 60):
+        minutes = int(seconds/60)
+        canvas3.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black", font=('Times 28 bold'))
+        canvas4.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black", font=('Times 28 bold'))
+    else:
+        canvas3.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+                           font=('Times 28 bold'))
+        canvas4.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+                            font=('Times 28 bold'))
+
+    canvas3.create_text(1176, 720, text="Difficulty: 6/10 (BETA)".format(minutes), fill="black",
+                        font=('Times 28 bold'))
+    canvas4.create_text(1176, 720, text="Difficulty: 6/10 (BETA)".format(minutes), fill="black",
+                        font=('Times 28 bold'))
+
+
+    raise_frame(PaperScreen)
+
+def highlight_on():
+     global filename
+
+     doc = ""
+     if filename != "":
+        doc = "{}".format(filename)
+     else:
+        doc = "SciHubPaper.pdf"
+
+     doc = fitz.open(doc)
+
+     for page in doc:
+         ### SEARCH
+         text = "{}".format(keywords_list[0])
+         text_instances = page.search_for(text)
+
+         ### HIGHLIGHT
+         for inst in text_instances:
+             highlight = page.add_highlight_annot(inst)
+             # highlight.set_opacity(0)
+             highlight.update()
+
+     ### OUTPUT
+     doc.save("output.pdf", garbage=4, deflate=True, clean=True)
+
+     # creating object of ShowPdf from tkPDFViewer.
+     v3 = pdf.ShowPdf()
+     # Adding pdf location and width and height.
+     v4 = v3.pdf_view(PaperScreenHighlight, pdf_location="output.pdf", width=95, height=50)
+     # Placing Pdf in my gui.
+
+     v4.pack()
+     canvas4.create_window(20, 10, anchor="nw", window=v4)
+     raise_frame(PaperScreenHighlight)
+
+
+def highlight_off():
+    global filename
+
+    if filename != "":
+        document = "{}".format(filename)
+    else:
+        document = "SciHubPaper.pdf"
+
+    # creating object of ShowPdf from tkPDFViewer.
+    v1 = pdf.ShowPdf()
+    # Adding pdf location and width and height.
+    v2 = v1.pdf_view(PaperScreen, pdf_location=document, width=95, height=50)
+    # Placing Pdf in my gui.
+
+    v2.pack()
+    canvas3.create_window(20, 10, anchor="nw", window=v2)
+    raise_frame(PaperScreen)
+
+def timer_start():
+    global timestart
+
+    timestart = time.perf_counter()
+    button11.pack()
+    button11.pack_forget()
+    canvas5.create_window(100, 600, anchor="nw", window=button12)
+
+def timer_stop():
+    global timestart
+    global readingspeed
+
+    time_end = time.perf_counter()
+    time_elapsed = time_end - timestart
+    readingspeed = int(156/(time_elapsed/60))
+
+    file = open("testingfile2.txt", "rt", encoding='utf-8')
+    data = file.read()
+    words = data.split()
+    seconds = int(len(words) / readingspeed * 60)
+    canvas3.create_image(900, 630, image=removereadingtime, anchor="nw")
+    canvas4.create_image(900, 630, image=removereadingtime, anchor="nw")
+    if (seconds > 60):
+        minutes = int(seconds / 60)
+        canvas3.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black",
+                            font=('Times 28 bold'))
+    else:
+        canvas3.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+                            font=('Times 28 bold'))
+
+    button12.pack()
+    button12.pack_forget()
+    canvas5.create_window(100, 600, anchor="nw", window=button11)
+
+def search_term():
+    global option
+
+    word = def_entry.get()
+    word = word.lower()
+    dict = Dictionary(word)
+    meaning = dict.get_meanings()
+    synonyms = dict.get_synonyms()
+    antonyms = dict.get_antonyms()
+
+    text1.pack()
+    text1_2.pack()
+    text1.pack_forget()
+    text1_2.pack_forget()
+
+    text1.delete('1.0', END)
+    text1_2.delete('1.0', END)
+
+    if option == 0:
+        if meaning:
+            text1.insert(INSERT, "{}".format(meaning[0]))
+            text1_2.insert(INSERT, "{}".format(meaning[0]))
+        else:
+            text1.insert(INSERT, "No definition was found")
+            text1_2.insert(INSERT, "No definition was found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+    elif option == 1:
+        if synonyms:
+            text1.insert(INSERT, "{}".format(synonyms))
+            text1_2.insert(INSERT, "{}".format(synonyms))
+        else:
+            text1.insert(INSERT, "No synonyms were found")
+            text1_2.insert(INSERT, "No synonyms were found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+    elif option == 2:
+        if antonyms:
+            text1.insert(INSERT, "{}".format(antonyms))
+            text1_2.insert(INSERT, "{}".format(antonyms))
+        else:
+            text1.insert(INSERT, "No antonyms were found")
+            text1_2.insert(INSERT, "No antonyms were found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+
+def search_term2():
+    global option
+
+    word = def_entry_2.get()
+    word = word.lower()
+    dict = Dictionary(word)
+    meaning = dict.get_meanings()
+    synonyms = dict.get_synonyms()
+    antonyms = dict.get_antonyms()
+
+    text1.pack()
+    text1_2.pack()
+    text1.pack_forget()
+    text1_2.pack_forget()
+
+    text1.delete('1.0', END)
+    text1_2.delete('1.0', END)
+
+    if option == 0:
+        if meaning:
+            text1.insert(INSERT, "{}".format(meaning[0]))
+            text1_2.insert(INSERT, "{}".format(meaning[0]))
+        else:
+            text1.insert(INSERT, "No definition was found")
+            text1_2.insert(INSERT, "No definition was found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+    elif option == 1:
+        if synonyms:
+            text1.insert(INSERT, "{}".format(synonyms))
+            text1_2.insert(INSERT, "{}".format(synonyms))
+        else:
+            text1.insert(INSERT, "No synonyms were found")
+            text1_2.insert(INSERT, "No synonyms were found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+    elif option == 2:
+        if antonyms:
+            text1.insert(INSERT, "{}".format(antonyms))
+            text1_2.insert(INSERT, "{}".format(antonyms))
+        else:
+            text1.insert(INSERT, "No antonyms were found")
+            text1_2.insert(INSERT, "No antonyms were found")
+        canvas3.create_window(850, 460, anchor="nw", window=text1)
+        canvas4.create_window(850, 460, anchor="nw", window=text1_2)
+
+def remove_papernotfound_prompt():
+    canvas.create_image(490, 650, image=removepapernotfound,
+                         anchor="nw")
+
+def one_star():
+    button16.pack()
+    button16.pack_forget()
+    canvas6.create_window(130, 677, anchor="nw", window=button17)
+def one_star2():
+    button17_4.pack()
+    button17_3.pack()
+    button17_2.pack()
+    button17_1.pack()
+    button17.pack()
+    button17_4.pack_forget()
+    button17_3.pack_forget()
+    button17_2.pack_forget()
+    button17_1.pack_forget()
+    button17.pack_forget()
+    canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+    canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+    canvas6.create_window(250, 677, anchor="nw", window=button16_2)
+    canvas6.create_window(190, 677, anchor="nw", window=button16_1)
+    canvas6.create_window(130, 677, anchor="nw", window=button16)
+def two_star():
+    button16.pack()
+    button16_1.pack()
+    button16.pack_forget()
+    button16_1.pack_forget()
+    canvas6.create_window(130, 677, anchor="nw", window=button17)
+    canvas6.create_window(190, 677, anchor="nw", window=button17_1)
+def two_star2():
+    button17_4.pack()
+    button17_3.pack()
+    button17_2.pack()
+    button17_1.pack()
+    button17_4.pack_forget()
+    button17_3.pack_forget()
+    button17_2.pack_forget()
+    button17_1.pack_forget()
+    canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+    canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+    canvas6.create_window(250, 677, anchor="nw", window=button16_2)
+    canvas6.create_window(190, 677, anchor="nw", window=button16_1)
+def three_star():
+    button16.pack()
+    button16_1.pack()
+    button16_2.pack()
+    button16.pack_forget()
+    button16_1.pack_forget()
+    button16_2.pack_forget()
+    canvas6.create_window(130, 677, anchor="nw", window=button17)
+    canvas6.create_window(190, 677, anchor="nw", window=button17_1)
+    canvas6.create_window(250, 677, anchor="nw", window=button17_2)
+def three_star2():
+    button17_4.pack()
+    button17_3.pack()
+    button17_2.pack()
+    button17_4.pack_forget()
+    button17_3.pack_forget()
+    button17_2.pack_forget()
+    canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+    canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+    canvas6.create_window(250, 677, anchor="nw", window=button16_2)
+def four_star():
+    button16.pack()
+    button16_1.pack()
+    button16_2.pack()
+    button16_3.pack()
+    button16.pack_forget()
+    button16_1.pack_forget()
+    button16_2.pack_forget()
+    button16_3.pack_forget()
+    canvas6.create_window(130, 677, anchor="nw", window=button17)
+    canvas6.create_window(190, 677, anchor="nw", window=button17_1)
+    canvas6.create_window(250, 677, anchor="nw", window=button17_2)
+    canvas6.create_window(310, 677, anchor="nw", window=button17_3)
+def four_star2():
+    button17_4.pack()
+    button17_3.pack()
+    button17_3.pack_forget()
+    button17_4.pack_forget()
+    canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+    canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+def five_star():
+    button16.pack()
+    button16_1.pack()
+    button16_2.pack()
+    button16_3.pack()
+    button16_4.pack()
+    button16.pack_forget()
+    button16_1.pack_forget()
+    button16_2.pack_forget()
+    button16_3.pack_forget()
+    button16_4.pack_forget()
+    canvas6.create_window(130, 677, anchor="nw", window=button17)
+    canvas6.create_window(190, 677, anchor="nw", window=button17_1)
+    canvas6.create_window(250, 677, anchor="nw", window=button17_2)
+    canvas6.create_window(310, 677, anchor="nw", window=button17_3)
+    canvas6.create_window(370, 677, anchor="nw", window=button17_4)
+
+def open_feedback():
+    button17_4.pack()
+    button17_3.pack()
+    button17_2.pack()
+    button17_1.pack()
+    button17.pack()
+    button17_4.pack_forget()
+    button17_3.pack_forget()
+    button17_2.pack_forget()
+    button17_1.pack_forget()
+    button17.pack_forget()
+    canvas6.create_window(370, 677, anchor="nw", window=button16_4)
+    canvas6.create_window(310, 677, anchor="nw", window=button16_3)
+    canvas6.create_window(250, 677, anchor="nw", window=button16_2)
+    canvas6.create_window(190, 677, anchor="nw", window=button16_1)
+    canvas6.create_window(130, 677, anchor="nw", window=button16)
+
+    text2.delete('1.0', END)
+    raise_frame(FeedbackScreen)
+
+def synonyms_on():
+    global option
+    option = 1
+    button18.pack()
+    button18_2.pack()
+    button18.pack_forget()
+    button18_2.pack_forget()
+    button22.pack()
+    button22_2.pack()
+    button22.pack_forget()
+    button22_2.pack_forget()
+    button20.pack()
+    button20_2.pack()
+    button20.pack_forget()
+    button20_2.pack_forget()
+    canvas3.create_window(1150, 280, anchor="nw", window=button19)
+    canvas4.create_window(1150, 280, anchor="nw", window=button19_2)
+    canvas3.create_window(1000, 280, anchor="nw", window=button21)
+    canvas4.create_window(1000, 280, anchor="nw", window=button21_2)
+    canvas3.create_window(1300, 278, anchor="nw", window=button23)
+    canvas4.create_window(1300, 278, anchor="nw", window=button23_2)
+
+def antonyms_on():
+    global option
+    option = 2
+    button18.pack()
+    button18_2.pack()
+    button18.pack_forget()
+    button18_2.pack_forget()
+    button19.pack()
+    button19_2.pack()
+    button19.pack_forget()
+    button19_2.pack_forget()
+    button23.pack()
+    button23_2.pack()
+    button23.pack_forget()
+    button23_2.pack_forget()
+    canvas3.create_window(1300, 278, anchor="nw", window=button20)
+    canvas4.create_window(1300, 278, anchor="nw", window=button20_2)
+    canvas3.create_window(1150, 280, anchor="nw", window=button22)
+    canvas4.create_window(1150, 280, anchor="nw", window=button22_2)
+    canvas3.create_window(1000, 280, anchor="nw", window=button21)
+    canvas4.create_window(1000, 280, anchor="nw", window=button21_2)
+
+def definition_on():
+    global option
+    option = 0
+    button21.pack()
+    button21_2.pack()
+    button21.pack_forget()
+    button21_2.pack_forget()
+    button19.pack()
+    button19_2.pack()
+    button19.pack_forget()
+    button19_2.pack_forget()
+    button20.pack()
+    button20_2.pack()
+    button20.pack_forget()
+    button20_2.pack_forget()
+    canvas3.create_window(1000, 280, anchor="nw", window=button18)
+    canvas4.create_window(1000, 280, anchor="nw", window=button18_2)
+    canvas3.create_window(1300, 278, anchor="nw", window=button23)
+    canvas4.create_window(1300, 278, anchor="nw", window=button23_2)
+    canvas3.create_window(1150, 280, anchor="nw", window=button22)
+    canvas4.create_window(1150, 280, anchor="nw", window=button22_2)
+
+# Function for changing screens/canvasses
+def raise_frame(frame):
+    frame.tkraise()
+
+raise_frame(StartScreen)
+root.mainloop()
