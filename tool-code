@@ -32,27 +32,39 @@ from scihub import SciHub
 import string
 from string import digits
 import fitz
+import re
 
 from keybert import KeyBERT
 from pydictionary import Dictionary
 import readtime
 
+from lexicalrichness import LexicalRichness
+import textstat
+
+import transformers
+from transformers import AutoModelWithLMHead, AutoTokenizer
+
+import openai
+
 # globals
 sh = SciHub()
-frameCnt = 12
+frameCnt = 24
 total_frameCnt = 0
 input = ""
 filename = ""
+openai.api_key = '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'
 keywords_list= []
 timestart = 0
 readingspeed = 265
 option = 0
 
 kw_model = KeyBERT(model='all-mpnet-base-v2')
-
+nlp = transformers.pipeline("summarization")
+tokenizer = AutoTokenizer.from_pretrained("mrm8488/t5-base-finetuned-question-generation-ap")
+model = AutoModelWithLMHead.from_pretrained("mrm8488/t5-base-finetuned-question-generation-ap")
 
 root = Tk()
-root.title("SKORT Tool V1.0")
+root.title("SKORT Tool V2.0")
 root.attributes("-fullscreen", False)
 root.bind("<Escape>", lambda event: root.attributes("-fullscreen", False))
 root.geometry("1920x1080")
@@ -63,19 +75,29 @@ LoadingScreen = Frame(root)
 PaperScreenHighlight = Frame(root)
 ReadingTimeScreen = Frame(root)
 FeedbackScreen = Frame(root)
-for frame in (PaperScreen, StartScreen, LoadingScreen, PaperScreenHighlight, ReadingTimeScreen, FeedbackScreen):
+SummaryScreen = Frame(root)
+QuizScreen = Frame(root)
+ChatGPTScreen = Frame(root)
+DifficultyScreen = Frame(root)
+for frame in (PaperScreen, StartScreen, LoadingScreen, PaperScreenHighlight, ReadingTimeScreen, FeedbackScreen,
+              SummaryScreen, QuizScreen, ChatGPTScreen, DifficultyScreen):
     frame.grid(row=0, column=0, sticky="news")
     #frame.pack()
 
 logo = PhotoImage(file = r'D:\Sander\MAAI\NLP\SKORTLogo2.png', master=root)
 bg = PhotoImage(file = r'D:\Sander\MAAI\NLP\Background.png', master=root)
 rtbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingTimeBox.png', master=root)
+difficultybox = PhotoImage(file = r'D:\Sander\MAAI\NLP\DifficultyBox.png', master=root)
 hbbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\HomeButtonBox.png', master=root)
 readingbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingText.png', master=root)
 starbox = PhotoImage(file = r'D:\Sander\MAAI\NLP\StarBox.png', master=root)
 readingexplanation = PhotoImage(file = r'D:\Sander\MAAI\NLP\ReadingExplanation.png', master=root)
 removereadingtime = PhotoImage(file = r'D:\Sander\MAAI\NLP\RemoveReadingTime.png', master=root)
 removepapernotfound = PhotoImage(file = r'D:\Sander\MAAI\NLP\RemovePaperNotFound.png', master=root)
+chatgptprompt = PhotoImage(file = r'D:\Sander\MAAI\NLP\ChatGPTPrompt.png', master=root)
+quizprompt = PhotoImage(file = r'D:\Sander\MAAI\NLP\QuizPrompt.png', master=root)
+slogan = PhotoImage(file = r'D:\Sander\MAAI\NLP\Slogan.png', master=root)
+
 
 canvas = Canvas(StartScreen, width=root.winfo_screenwidth(),
                  height=root.winfo_screenheight())
@@ -115,10 +137,38 @@ canvas6.pack(fill="both", expand=True)
 canvas6.create_image(0, 0, image=bg,
                      anchor="nw")
 
+canvas7 = Canvas(SummaryScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas7.pack(fill="both", expand=True)
+canvas7.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas8 = Canvas(QuizScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas8.pack(fill="both", expand=True)
+canvas8.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas9 = Canvas(ChatGPTScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas9.pack(fill="both", expand=True)
+canvas9.create_image(0, 0, image=bg,
+                     anchor="nw")
+
+canvas10 = Canvas(DifficultyScreen, width=root.winfo_screenwidth(),
+                 height=root.winfo_screenheight())
+canvas10.pack(fill="both", expand=True)
+canvas10.create_image(0, 0, image=bg,
+                     anchor="nw")
+
 canvas3.create_image(850, 20, image=hbbox, anchor="nw")
 canvas4.create_image(850, 20, image=hbbox, anchor="nw")
 canvas5.create_image(850, 20, image=hbbox, anchor="nw")
 canvas6.create_image(850, 20, image=hbbox, anchor="nw")
+canvas7.create_image(850, 20, image=hbbox, anchor="nw")
+canvas8.create_image(850, 20, image=hbbox, anchor="nw")
+canvas9.create_image(850, 20, image=hbbox, anchor="nw")
+canvas10.create_image(850, 20, image=hbbox, anchor="nw")
 canvas6.create_image(100, 670, image=starbox, anchor="nw")
 canvas5.create_image(850, 150, image=readingexplanation, anchor="nw")
 
@@ -145,16 +195,17 @@ button4 = Button(PaperScreenHighlight, image=click_btn4, command=lambda:highligh
 canvas4.create_window(1080, 150, anchor="nw", window=button4)
 
 click_btn5 = PhotoImage(file = r'D:\Sander\MAAI\NLP\InfoButton.png', master=root)
-button5 = Button(PaperScreen, image=click_btn5, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
-button5_2 = Button(PaperScreenHighlight, image=click_btn5, command=None, borderwidth=0, bg='white')
-button6 = Button(PaperScreen, image=click_btn5, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
-button6_2 = Button(PaperScreenHighlight, image=click_btn5, command=None, borderwidth=0, bg='white')
+click_btn55 = PhotoImage(file = r'D:\Sander\MAAI\NLP\GearIcon.png', master=root)
+button5 = Button(PaperScreen, image=click_btn55, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
+button5_2 = Button(PaperScreenHighlight, image=click_btn55, command=lambda:raise_frame(ReadingTimeScreen), borderwidth=0, bg='white')
+button6 = Button(PaperScreen, image=click_btn5, command=lambda:[f for f in [raise_frame(DifficultyScreen), calc_statistics()]], borderwidth=0, bg='white')
+button6_2 = Button(PaperScreenHighlight, image=click_btn5, command=lambda:[f for f in [raise_frame(DifficultyScreen), calc_statistics()]], borderwidth=0, bg='white')
 canvas3.create_window(900, 640, anchor="nw", window=button5)
 canvas3.create_window(900, 700, anchor="nw", window=button6)
 canvas4.create_window(900, 640, anchor="nw", window=button5_2)
 canvas4.create_window(900, 700, anchor="nw", window=button6_2)
-myTip5 = Hovertip(button5,'Show info about reading time')
-myTip5_2 = Hovertip(button5_2,'Show info about reading time')
+myTip5 = Hovertip(button5,'Show reading time settings')
+myTip5_2 = Hovertip(button5_2,'Show reading time settings')
 myTip6 = Hovertip(button6,'Show info about text difficulty')
 myTip6_2 = Hovertip(button6_2,'Show info about text difficulty')
 
@@ -163,14 +214,26 @@ button7 = Button(PaperScreen, image=click_btn7, command=lambda: [f for f in [rai
 button7_2 = Button(PaperScreenHighlight, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
 button7_3 = Button(ReadingTimeScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
 button7_4 = Button(FeedbackScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_5 = Button(SummaryScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_6 = Button(QuizScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_7 = Button(ChatGPTScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
+button7_8 = Button(DifficultyScreen, image=click_btn7, command=lambda: [f for f in [raise_frame(StartScreen), remove_papernotfound_prompt()]], borderwidth=0, bg='white')
 canvas3.create_window(1350, 30, anchor="nw", window=button7)
 canvas4.create_window(1350, 30, anchor="nw", window=button7_2)
 canvas5.create_window(1350, 30, anchor="nw", window=button7_3)
 canvas6.create_window(1350, 30, anchor="nw", window=button7_4)
+canvas7.create_window(1350, 30, anchor="nw", window=button7_5)
+canvas8.create_window(1350, 30, anchor="nw", window=button7_6)
+canvas9.create_window(1350, 30, anchor="nw", window=button7_7)
+canvas10.create_window(1350, 30, anchor="nw", window=button7_8)
 myTip7 = Hovertip(button7,'Return to the home page')
 myTip7_2 = Hovertip(button7_2,'Return to the home page')
 myTip7_3 = Hovertip(button7_3,'Return to the home page')
 myTip7_4 = Hovertip(button7_4,'Return to the home page')
+myTip7_5 = Hovertip(button7_5,'Return to the home page')
+myTip7_6 = Hovertip(button7_6,'Return to the home page')
+myTip7_7 = Hovertip(button7_7,'Return to the home page')
+myTip7_8 = Hovertip(button7_8,'Return to the home page')
 
 def_var = StringVar()
 def_entry = Entry(PaperScreen,textvariable = def_var, font=('calibre',28,'normal'), bg = 'white', bd = 2, width=21)
@@ -183,10 +246,22 @@ canvas4.create_window(1000, 350, anchor='nw', window=def_entry_2)
 click_btn10 = PhotoImage(file = r'D:\Sander\MAAI\NLP\BackButton.png', master=root)
 button10 = Button(ReadingTimeScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
 button10_2 = Button(FeedbackScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+button10_3 = Button(SummaryScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+button10_4 = Button(QuizScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+button10_5 = Button(ChatGPTScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
+button10_6 = Button(DifficultyScreen, image=click_btn10, command=lambda:raise_frame(PaperScreen), borderwidth=0, bg='white')
 canvas5.create_window(1250, 30, anchor="nw", window=button10)
 canvas6.create_window(1250, 30, anchor="nw", window=button10_2)
+canvas7.create_window(1250, 30, anchor="nw", window=button10_3)
+canvas8.create_window(1250, 30, anchor="nw", window=button10_4)
+canvas9.create_window(1250, 30, anchor="nw", window=button10_5)
+canvas10.create_window(1250, 30, anchor="nw", window=button10_6)
 myTip10 = Hovertip(button10,'Return to the previous screen')
 myTip10_2 = Hovertip(button10_2,'Return to the previous screen')
+myTip10_3 = Hovertip(button10_3,'Return to the previous screen')
+myTip10_4 = Hovertip(button10_4,'Return to the previous screen')
+myTip10_5 = Hovertip(button10_5,'Return to the previous screen')
+myTip10_6 = Hovertip(button10_6,'Return to the previous screen')
 
 click_btn11 = PhotoImage(file = r'D:\Sander\MAAI\NLP\StartTimer.png', master=root)
 button11 = Button(ReadingTimeScreen, image=click_btn11, command=lambda:timer_start(), borderwidth=0, bg='white')
@@ -261,25 +336,84 @@ button23_2 = Button(PaperScreenHighlight, image=click_btn23, command=lambda:anto
 canvas3.create_window(1300, 278, anchor="nw", window=button23)
 canvas4.create_window(1300, 278, anchor="nw", window=button23_2)
 
+click_btn24 = PhotoImage(file = r'D:\Sander\MAAI\NLP\SummaryButton.png', master=root)
+button24 = Button(PaperScreen, image=click_btn24, command=lambda:raise_SummaryScreen(), borderwidth=0, bg='white')
+button24_2 = Button(PaperScreenHighlight, image=click_btn24, command=lambda:raise_SummaryScreen(), borderwidth=0, bg='white')
+canvas3.create_window(960, 30, anchor="nw", window=button24)
+canvas4.create_window(960, 30, anchor="nw", window=button24_2)
+myTip24 = Hovertip(button24,'Go to the summarizer page')
+myTip24_2 = Hovertip(button24_2,'Go to the summarizer page')
+
+click_btn25 = PhotoImage(file = r'D:\Sander\MAAI\NLP\QuizButton.png', master=root)
+button25 = Button(PaperScreen, image=click_btn25, command=lambda:raise_QuizScreen(), borderwidth=0, bg='white')
+button25_2 = Button(PaperScreenHighlight, image=click_btn25, command=lambda:raise_QuizScreen(), borderwidth=0, bg='white')
+canvas3.create_window(1063, 30, anchor="nw", window=button25)
+canvas4.create_window(1063, 30, anchor="nw", window=button25_2)
+myTip25 = Hovertip(button25,'Go to the question generation page')
+myTip25_2 = Hovertip(button25_2,'Go to the question generation page')
+
+click_btn26 = PhotoImage(file = r'D:\Sander\MAAI\NLP\ChatGPTButton.png', master=root)
+button26 = Button(PaperScreen, image=click_btn26, command=lambda:raise_ChatGPTScreen(), borderwidth=0, bg='white')
+button26_2 = Button(PaperScreenHighlight, image=click_btn26, command=lambda:raise_ChatGPTScreen(), borderwidth=0, bg='white')
+canvas3.create_window(1165, 30, anchor="nw", window=button26)
+canvas4.create_window(1165, 30, anchor="nw", window=button26_2)
+myTip26 = Hovertip(button26,'Go to the ChatGPT page')
+myTip26_2 = Hovertip(button26,'Go to the ChatGPT page')
+
+click_btn27 = PhotoImage(file = r'D:\Sander\MAAI\NLP\GenerateButton.png', master=root)
+button27 = Button(SummaryScreen, image=click_btn27, command=lambda:generate_SummaryScreen(), borderwidth=0, bg='white')
+canvas7.create_window(1180, 700, anchor="nw", window=button27)
+
+click_btn28 = PhotoImage(file = r'D:\Sander\MAAI\NLP\GenerateButton.png', master=root)
+button28 = Button(QuizScreen, image=click_btn28, command=lambda:generate_Quiz(), borderwidth=0, bg='white')
+canvas8.create_window(1180, 520, anchor="nw", window=button28)
+
+click_btn29 = PhotoImage(file = r'D:\Sander\MAAI\NLP\GenerateButton.png', master=root)
+button29 = Button(ChatGPTScreen, image=click_btn29, command=lambda:generate_ChatGPT(), borderwidth=0, bg='white')
+canvas9.create_window(1180, 520, anchor="nw", window=button29)
+
 text1 = Text(PaperScreen, bg='white', font=('Times 18 bold'), bd=1, height=5, width=50)
 text1_2 = Text(PaperScreenHighlight, bg='white', font=('Times 18 bold'), bd=1, height=5, width=50)
 text2 = Text(FeedbackScreen, bg='white', font=('Times 18 bold'), bd=1, height=20, width=50)
+text3 = Text(SummaryScreen, bg='white', font=('Times 18 bold'), bd=1, height=20, width=50)
+text4 = Text(QuizScreen, bg='white', font=('Times 18 bold'), bd=1, height=2, width=50)
+text4_2 = Text(QuizScreen, bg='white', font=('Times 18 bold'), bd=1, height=4, width=50)
+text5 = Text(ChatGPTScreen, bg='white', font=('Times 18 bold'), bd=1, height=2, width=50)
+text5_2 = Text(ChatGPTScreen, bg='white', font=('Times 18 bold'), bd=1, height=4, width=50)
 canvas6.create_window(100, 140, anchor="nw", window=text2)
+canvas7.create_window(850, 150, anchor="nw", window=text3)
+canvas8.create_window(850, 450, anchor="nw", window=text4)
+canvas8.create_window(850, 670, anchor="nw", window=text4_2)
+canvas9.create_window(850, 450, anchor="nw", window=text5)
+canvas9.create_window(850, 670, anchor="nw", window=text5_2)
 
 canvas.create_text(790, 520, text="or", fill="black", font=('Times 28 bold'))
 canvas.create_text(420, 470, text="Enter a Sci-Hub link:", fill="black", font=('Times 28 bold'))
 canvas5.create_text(310, 70, text="Personalized Reading Time", fill="black", font=('Times 28 bold'))
 canvas6.create_text(400, 70, text="Give your feedback on the SKORT Tool", fill="black", font=('Times 28 bold'))
+canvas7.create_text(1050, 63, text="Summarizer", fill="black", font=('Times 28 bold'))
+canvas8.create_text(1050, 63, text="Question generator", fill="black", font=('Times 28 bold'))
+canvas9.create_text(1050, 63, text="ChatGPT API", fill="black", font=('Times 28 bold'))
+canvas8.create_text(990, 420, text="Enter an answer:", fill="black", font=('Times 28 bold'))
+canvas8.create_text(1000, 635, text="Generated question", fill="black", font=('Times 28 bold'))
+canvas9.create_text(1050, 410, text="Ask ChatGPT a question:", fill="black", font=('Times 28 bold'))
+canvas9.create_text(1000, 635, text="ChatGPT's prompt", fill="black", font=('Times 28 bold'))
+canvas10.create_text(350, 70, text="Other statistics", fill="black", font=('Times 28 bold'))
 
 canvas5.create_line(700, 0, 700, 1000)
 canvas6.create_line(800, 0, 800, 1000)
+canvas10.create_line(700, 0, 700, 1000)
 
+canvas.create_image(650, 360, image=slogan, anchor="nw")
 canvas3.create_image(850, 610, image=rtbox, anchor="nw")
 canvas4.create_image(850, 610, image=rtbox, anchor="nw")
 canvas5.create_image(50, 150, image=readingbox, anchor="nw")
+canvas8.create_image(850, 120, image=quizprompt, anchor="nw")
+canvas9.create_image(850, 120, image=chatgptprompt, anchor="nw")
+canvas10.create_image(850, 150, image=difficultybox, anchor="nw")
+
 
 frames = [PhotoImage(file=r'D:\Sander\MAAI\NLP\Loading_icon.gif', format = 'gif -index %i' %(i)) for i in range(frameCnt)]
-
 
 # Function for searching a file for upload
 def select_file():
@@ -346,12 +480,11 @@ def take_input():
 def update(ind, filename_paper):
     global total_frameCnt
     global keywords_list
+    print(ind)
     frame = frames[ind]
-    total_frameCnt += 1
+    #total_frameCnt += 1
     ind += 1
-    if ind == frameCnt:
-        ind = 0
-    if total_frameCnt == 60:
+    if ind == 24:
         with open('testingfile2.txt', 'r', encoding="utf8") as file:
             full_text = file.read().replace('\n', ' ')
         remove_digits = str.maketrans('', '', digits)
@@ -365,7 +498,7 @@ def update(ind, filename_paper):
 
                                              highlight=True,
 
-                                             top_n=10)
+                                             top_n=15)
 
         keywords_list = list(dict(keywords).keys())
         load_in_paper(filename_paper)
@@ -376,15 +509,15 @@ def update(ind, filename_paper):
 # Function for loading in the paper in the PaperScreen
 def load_in_paper(x):
     global readingspeed
+    global filename
 
     # creating object of ShowPdf from tkPDFViewer.
     v1 = pdf.ShowPdf()
-    # Adding pdf location and width and height.
-    v2 = v1.pdf_view(PaperScreen, pdf_location = "{}".format(x), width= 95, height=50)
-    # Placing Pdf in my gui.
+    v2 = v1.pdf_view(PaperScreen, pdf_location="{}".format(x), width=95, height=50)
     v2.pack()
-    pdf_canvas = canvas3.create_window(20, 10, anchor="nw",
-        window=v2)
+    pdf_canvas1 = canvas3.create_window(20, 10, anchor="nw",
+                                        window=v2)
+
 
     file = open("testingfile2.txt", "rt", encoding='utf-8')
     data = file.read()
@@ -396,21 +529,68 @@ def load_in_paper(x):
         canvas3.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black", font=('Times 28 bold'))
         canvas4.create_text(1190, 660, text="Reading time: {} minutes".format(minutes), fill="black", font=('Times 28 bold'))
     else:
-        canvas3.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+        canvas3.create_text(1190, 660, text="Reading time: {} seconds".format(int(seconds)), fill="black",
                            font=('Times 28 bold'))
-        canvas4.create_text(1190, 660, text="Reading time: {} seconds".format(seconds), fill="black",
+        canvas4.create_text(1190, 660, text="Reading time: {} seconds".format(int(seconds)), fill="black",
                             font=('Times 28 bold'))
 
-    canvas3.create_text(1176, 720, text="Difficulty: 6/10 (BETA)".format(minutes), fill="black",
-                        font=('Times 28 bold'))
-    canvas4.create_text(1176, 720, text="Difficulty: 6/10 (BETA)".format(minutes), fill="black",
-                        font=('Times 28 bold'))
-
+    reading_ease = textstat.textstat.flesch_reading_ease(data)
+    if 100 < reading_ease <= 121:
+        canvas3.create_text(1110, 720, text="Difficulty: 1/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 1/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 90 <= reading_ease <= 100:
+        canvas3.create_text(1110, 720, text="Difficulty: 2/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 2/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 80 <= reading_ease < 90:
+        canvas3.create_text(1110, 720, text="Difficulty: 3/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 3/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 70 <= reading_ease < 80:
+        canvas3.create_text(1110, 720, text="Difficulty: 4/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 4/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 60 <= reading_ease < 70:
+        canvas3.create_text(1110, 720, text="Difficulty: 5/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 5/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 50 <= reading_ease < 60:
+        canvas3.create_text(1110, 720, text="Difficulty: 6/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 6/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 40 <= reading_ease < 50:
+        canvas3.create_text(1110, 720, text="Difficulty: 7/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 7/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 30 <= reading_ease < 40:
+        canvas3.create_text(1110, 720, text="Difficulty: 8/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1176, 720, text="Difficulty: 8/10", fill="black",
+                            font=('Times 28 bold'))
+    elif 20 <= reading_ease < 30:
+        canvas3.create_text(1110, 720, text="Difficulty: 9/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 9/10", fill="black",
+                            font=('Times 28 bold'))
+    elif reading_ease < 20:
+        canvas3.create_text(1110, 720, text="Difficulty: 10/10", fill="black",
+                            font=('Times 28 bold'))
+        canvas4.create_text(1110, 720, text="Difficulty: 10/10", fill="black",
+                            font=('Times 28 bold'))
 
     raise_frame(PaperScreen)
 
 def highlight_on():
      global filename
+     global keywords_list
 
      doc = ""
      if filename != "":
@@ -419,17 +599,27 @@ def highlight_on():
         doc = "SciHubPaper.pdf"
 
      doc = fitz.open(doc)
+     ### SEARCH
+     for keyword in keywords_list:
+         r = 0
+         text = "{}".format(keyword)
 
-     for page in doc:
-         ### SEARCH
-         text = "{}".format(keywords_list[0])
-         text_instances = page.search_for(text)
+         for page in doc:
+             text_instances = page.search_for(text)
+             # only highlight the first time a keyword is found
+             for inst in text_instances:
+                 if r == 0:
+                     highlight = page.add_highlight_annot(inst)
+                     highlight.update()
+                     r = 1
+                 else:
+                     pass
 
-         ### HIGHLIGHT
-         for inst in text_instances:
-             highlight = page.add_highlight_annot(inst)
-             # highlight.set_opacity(0)
-             highlight.update()
+             #for inst in text_instances:
+                 #highlight = page.add_highlight_annot(inst)
+                 # highlight.set_opacity(0)
+                 #highlight.update()
+
 
      ### OUTPUT
      doc.save("output.pdf", garbage=4, deflate=True, clean=True)
@@ -444,7 +634,6 @@ def highlight_on():
      canvas4.create_window(20, 10, anchor="nw", window=v4)
      raise_frame(PaperScreenHighlight)
 
-
 def highlight_off():
     global filename
 
@@ -456,11 +645,9 @@ def highlight_off():
     # creating object of ShowPdf from tkPDFViewer.
     v1 = pdf.ShowPdf()
     # Adding pdf location and width and height.
-    v2 = v1.pdf_view(PaperScreen, pdf_location=document, width=95, height=50)
-    # Placing Pdf in my gui.
-
+    v2 = v1.pdf_view(PaperScreen, pdf_location="{}".format(filename), width=95, height=50)
     v2.pack()
-    canvas3.create_window(20, 10, anchor="nw", window=v2)
+    pdf_canvas1 = canvas3.create_window(20, 10, anchor="nw", window=v2)
     raise_frame(PaperScreen)
 
 def timer_start():
@@ -779,6 +966,123 @@ def definition_on():
     canvas4.create_window(1300, 278, anchor="nw", window=button23_2)
     canvas3.create_window(1150, 280, anchor="nw", window=button22)
     canvas4.create_window(1150, 280, anchor="nw", window=button22_2)
+
+def raise_SummaryScreen():
+    global filename
+    v1_7 = pdf.ShowPdf()
+    v7 = v1_7.pdf_view(SummaryScreen, pdf_location="{}".format(filename), width=95, height=50)
+    v7.pack()
+    pdf_canvas2 = canvas7.create_window(20, 10, anchor="nw",
+                                        window=v7)
+    raise_frame(SummaryScreen)
+def raise_QuizScreen():
+    global filename
+    v1_8 = pdf.ShowPdf()
+    v8 = v1_8.pdf_view(QuizScreen, pdf_location="{}".format(filename), width=95, height=50)
+    v8.pack()
+    pdf_canvas4 = canvas8.create_window(20, 10, anchor="nw",
+                                        window=v8)
+    raise_frame(QuizScreen)
+
+def raise_ChatGPTScreen():
+    global filename
+    v1_9 = pdf.ShowPdf()
+    v9 = v1_9.pdf_view(ChatGPTScreen, pdf_location="{}".format(filename), width=95, height=50)
+    v9.pack()
+    pdf_canvas3 = canvas9.create_window(20, 10, anchor="nw",
+                                        window=v9)
+    raise_frame(ChatGPTScreen)
+
+def generate_SummaryScreen():
+
+    file = open("testingfile2.txt", "rt", encoding='utf-8')
+    data = file.read()
+    wordlist = data.split(" ")
+    iter = int(len(wordlist) / 200)
+    x = 0
+    y = 200
+    summary = ""
+    for i in range(iter):
+
+        result_list = data.split()[x:y]
+        result_str = " ".join(result_list)
+        predicted = bart(corpus=result_str, max_len=60)
+        predicted_sentence = str(predicted[0])
+        predicted_sentence = predicted_sentence[19:]
+        pp = predicted_sentence.replace('}', '')
+        summary += str(pp)
+        x += 200
+        y += 200
+        print(x)
+
+    text3.pack()
+    text3.delete('1.0', END)
+    text3.insert(INSERT, "{}".format(summary))
+    canvas7.create_window(850, 150, anchor="nw", window=text3)
+
+def generate_Quiz():
+
+    file = open("testingfile2.txt", "rt", encoding='utf-8')
+    data = file.read()
+    data_shortened = data[:500]
+    input = text4.get("1.0",'end-1c')
+    output = str(get_question(input, data_shortened))
+    output = output[15:]
+    output = output[:-4]
+    text4_2.delete('1.0', END)
+    text4_2.insert(INSERT, "{}".format(output))
+
+def bart(corpus, max_len):
+    lst_summaries = nlp(corpus, max_length=max_len)
+    return lst_summaries
+
+def generate_ChatGPT():
+
+    def extract_terms(prompt):
+        # text = str(text).replace('\n', ' ')
+        # Use the ChatGPT API to generate a list of AI terms in the text
+        model_engine = "text-davinci-003"
+
+        completions = openai.Completion.create(
+            engine=model_engine,
+            prompt=prompt,
+            max_tokens=1000,
+            n=1,
+            temperature=0.5)
+
+        message = completions.choices[0].text
+        # terms = message.split(",")
+        return message
+
+    input = text5.get("1.0",'end-1c')
+    output = extract_terms("{}".format(input))
+    text5_2.delete('1.0', END)
+    text5_2.insert(INSERT, "{}".format(output))
+
+def get_question(answer, context, max_length=64):
+    input_text = "answer: %s  context: %s </s>" % (answer, context)
+    features = tokenizer([input_text], return_tensors='pt')
+
+    output = model.generate(input_ids=features['input_ids'],
+                            attention_mask=features['attention_mask'],
+                            max_length=max_length)
+
+    return tokenizer.decode(output[0])
+
+def calc_statistics():
+    global filename
+    file = open("testingfile2.txt", "rt", encoding='utf-8')
+    file2 = open("{}".format(filename), "rb")
+    data = file.read()
+    wordlist = data.split(" ")
+    readpdf = pdf2.PdfFileReader(file2)
+    totalpages = readpdf.numPages
+
+    canvas10.create_text(267, 260, text=" - Word count: {} words".format(len(wordlist)), fill="black",
+                        font=('Times 28 bold'))
+    canvas10.create_text(290, 320, text="- Number of pages: {} pages".format(totalpages), fill="black",
+                         font=('Times 28 bold'))
+
 
 # Function for changing screens/canvasses
 def raise_frame(frame):
